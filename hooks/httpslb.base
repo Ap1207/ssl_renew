@@ -5,7 +5,8 @@ function deploy_challenge {
     local ZONE_NAME ACME_TTL OLD_TADA M_DOMAIN
     for domain in ${TARGET_DOMAINS[@]}; do
         TARGET_DOMAIN=${domain}
-        ZONE_NAME=${domain//./-}
+        #ZONE_NAME=${domain//./-}
+        ZONE_NAME=${M_DOMAIN//./-}
         echo "TARGET_DOMAIN:${TARGET_DOMAIN}"
         echo "ZONE_NAME:${ZONE_NAME}"
       if [ $DOMAIN = $TARGET_DOMAIN ];then
