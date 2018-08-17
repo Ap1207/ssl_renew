@@ -4,6 +4,7 @@ LB_PROJECT="project_id"
 # zone name on cloud DNS must be converted from domain dot(.) to dash(-)
 # etc if domain is "www.example.com"  when zone name must be "www-example-com"
 TARGET_DOMAINS=("www.example.com" "example.com")
+M_DOMAIN="domain_CNAME_acme"
 
 # You can choice "NAME" form "gcloud beta compute target-https-proxies list"
 HTTPS_PROXY="target-https-proxy-name"
