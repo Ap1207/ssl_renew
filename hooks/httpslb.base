@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+function deploy_challenge {
+    local DOMAIN="${1}" TOKEN_FILENAME="${2}" TOKEN_VALUE="${3}"
+    local ZONE_NAME ACME_TTL OLD_TADA
+    for domain in ${TARGET_DOMAINS[@]}; do
+        TARGET_DOMAIN=${domain}
+        ZONE_NAME=${domain//./-}
+        echo "TARGET_DOMAIN:${TARGET_DOMAIN}"
+        echo "ZONE_NAME:${ZONE_NAME}"
+      if [ $DOMAIN = $TARGET_DOMAIN ];then
+        ACME_TTL=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." |awk 'NR==2 {print $3}'`
+        OLD_DATA=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." |awk 'NR==2 {print $4}'`
+        echo "ACME_TTL:${ACME_TTL}"
+        echo "OLD_DATA:${OLD_DATA}"
+
+        echo "Auto set TXT record of _acme-challenge.$DOMAIN to $TOKEN_VALUE"
+        echo "dns update start"
+        gcloud dns --project=$DNS_PROJECT record-sets transaction start -z=${ZONE_NAME}
+        gcloud dns --project=$DNS_PROJECT record-sets transaction remove \
+          ${OLD_DATA} \
+           -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." --type=TXT --ttl=${ACME_TTL}
+        gcloud dns --project=$DNS_PROJECT record-sets transaction add $TOKEN_VALUE -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." --type=TXT --ttl=${ACME_TTL}
+        gcloud dns --project=$DNS_PROJECT record-sets transaction execute -z=${ZONE_NAME}
+        echo "dns update end sleep ${SLEEP_SECONDS}"
+        sleep $SLEEP_SECONDS
+      fi
+    done
+}
+
+function clean_challenge {
+    local DOMAIN="${1}" TOKEN_FILENAME="${2}" TOKEN_VALUE="${3}"
+}
+
+function deploy_cert {
+    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}"
+    local TARGET_DOMAIN
+    echo "update ssl cert start"
+    echo "create ssl-certificates: $CERT_NAME on ${LB_PROJECT}"
+    gcloud beta compute --project ${LB_PROJECT} ssl-certificates create $CERT_NAME \
+      --certificate=$FULLCHAINFILE \
+      --private-key=$KEYFILE
+
+    echo "update HTTPS_PROXY:${HTTPS_PROXY}"
+    gcloud beta compute --project ${LB_PROJECT} target-https-proxies update ${HTTPS_PROXY} --ssl-certificates ${CERT_NAME}
+}
+
+function unchanged_cert {
+    local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}"
+}
+
+
+invalid_challenge() {
+    local DOMAIN="${1}" RESPONSE="${2}"
+
+    # This hook is called if the challenge response has failed, so domain
+    # owners can be aware and act accordingly.
+    #
+    # Parameters:
+    # - DOMAIN
+    #   The primary domain name, i.e. the certificate common
+    #   name (CN).
+    # - RESPONSE
+    #   The response that the verification server returned
+}
+
+request_failure() {
+    local STATUSCODE="${1}" REASON="${2}" REQTYPE="${3}"
+
+    # This hook is called when an HTTP request fails (e.g., when the ACME
+    # server is busy, returns an error, etc). It will be called upon any
+    # response code that does not start with '2'. Useful to alert admins
+    # about problems with requests.
+    #
+    # Parameters:
+    # - STATUSCODE
+    #   The HTML status code that originated the error.
+    # - REASON
+    #   The specified reason for the error.
+    # - REQTYPE
+    #   The kind of request that was made (GET, POST...)
+}
+
+startup_hook() {
+  # This hook is called before the cron command to do some initial tasks
+  # (e.g. starting a webserver).
+
+  :
+}
+
+exit_hook() {
+  # This hook is called at the end of the cron command and can be used to
+  # do some final (cleanup or other) tasks.
+
+  :
+}
+
+HANDLER="$1"; shift
+if [[ "${HANDLER}" =~ ^(deploy_challenge|clean_challenge|deploy_cert|unchanged_cert|invalid_challenge|request_failure|startup_hook|exit_hook)$ ]]; then
+  "$HANDLER" "$@"
+fi
