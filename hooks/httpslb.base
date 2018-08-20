@@ -2,18 +2,17 @@
 
 function deploy_challenge {
     local DOMAIN="${1}" TOKEN_FILENAME="${2}" TOKEN_VALUE="${3}"
-    local ZONE_NAME ACME_TTL OLD_TADA M_DOMAIN
+    local ZONE_NAME ACME_TTL OLD_TADA
     for domain in ${TARGET_DOMAINS[@]}; do
         TARGET_DOMAIN=${domain}
-        #ZONE_NAME=${domain//./-}
         ZONE_NAME=${M_DOMAIN//./-}
         echo "TARGET_DOMAIN:${TARGET_DOMAIN}"
         echo "ZONE_NAME:${ZONE_NAME}"
       if [ $DOMAIN = $TARGET_DOMAIN ];then
-        #ACME_TTL=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." |awk 'NR==2 {print $3}'`
-        #OLD_DATA=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." |awk 'NR==2 {print $4}'`
-        ACME_TTL=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="${M_DOMAIN}.${DOMAIN}." |awk 'NR==2 {print $3}'`
-        OLD_DATA=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="${M_DOMAIN}.${DOMAIN}." |awk 'NR==2 {print $4}'`
+        # ACME_TTL=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." |awk 'NR==2 {print $3}'`
+        # OLD_DATA=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." |awk 'NR==2 {print $4}'`
+	ACME_TTL=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="${DOMAIN}.${M_DOMAIN}." |awk 'NR==2 {print $3}'`
+	OLD_DATA=`gcloud --project=${DNS_PROJECT} dns record-sets list -z=${ZONE_NAME} --name="${DOMAIN}.${M_DOMAIN}." |awk 'NR==2 {print $4}'`
         echo "ACME_TTL:${ACME_TTL}"
         echo "OLD_DATA:${OLD_DATA}"
 
@@ -23,10 +22,10 @@ function deploy_challenge {
         gcloud dns --project=$DNS_PROJECT record-sets transaction start -z=${ZONE_NAME}
         gcloud dns --project=$DNS_PROJECT record-sets transaction remove \
           ${OLD_DATA} \
-        #   -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." --type=TXT --ttl=${ACME_TTL}
-        #gcloud dns --project=$DNS_PROJECT record-sets transaction add $TOKEN_VALUE -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." --type=TXT --ttl=${ACME_TTL}
-           -z=${ZONE_NAME} --name="${M_DOMAIN}.${DOMAIN}." --type=TXT --ttl=${ACME_TTL}
-        gcloud dns --project=$DNS_PROJECT record-sets transaction add $TOKEN_VALUE -z=${ZONE_NAME} --name="${M_DOMAIN}.${DOMAIN}." --type=TXT --ttl="1"
+           -z=${ZONE_NAME} --name="${DOMAIN}.${M_DOMAIN}." --type=TXT --ttl="1"
+        #gcloud dns --project=$DNS_PROJECT record-sets transaction add $TOKEN_VALUE -z=${ZONE_NAME} --name="_acme-challenge.${DOMAIN}." --type=TXT --ttl="1"
+	#   -z=${ZONE_NAME} --name="${DOMAIN}.${M_DOMAIN}." --type=TXT --ttl="1"
+	gcloud dns --project=$DNS_PROJECT record-sets transaction add $TOKEN_VALUE -z=${ZONE_NAME} --name="${DOMAIN}.${M_DOMAIN}." --type=TXT --ttl="1"
         gcloud dns --project=$DNS_PROJECT record-sets transaction execute -z=${ZONE_NAME}
         echo "dns update end sleep ${SLEEP_SECONDS}"
         sleep $SLEEP_SECONDS
@@ -40,15 +39,31 @@ function clean_challenge {
 
 function deploy_cert {
     local DOMAIN="${1}" KEYFILE="${2}" CERTFILE="${3}" FULLCHAINFILE="${4}" CHAINFILE="${5}" TIMESTAMP="${6}"
+    # createcertificate related files
+    cp "${2}" /etc/gcp-ssl-auto-renewer/ncert/privkey.pem
+    cp "${3}" /etc/gcp-ssl-auto-renewer/ncert/cert.pem
+    cp "${4}" /etc/gcp-ssl-auto-renewer/ncertfullchain.pem
+    cp "${5}" /etc/gcp-ssl-auto-renewer/ncert/chain.pem
+    gsutil cp -r /etc/gcp-ssl-auto-renewer/ncert/*.pem gs://bucket-testn/tls
     local TARGET_DOMAIN
+    local CERT_NAME="dn-cert" OLD_CERT_NAME="auto-201808171422"
     echo "update ssl cert start"
-    echo "create ssl-certificates: $CERT_NAME on ${LB_PROJECT}"
-    gcloud beta compute --project ${LB_PROJECT} ssl-certificates create $CERT_NAME \
-      --certificate=$FULLCHAINFILE \
-      --private-key=$KEYFILE
-
-    echo "update HTTPS_PROXY:${HTTPS_PROXY}"
-    gcloud beta compute --project ${LB_PROJECT} target-https-proxies update ${HTTPS_PROXY} --ssl-certificates ${CERT_NAME}
+    echo "set old sert ${OLD_CERT_NAME} for $HTTPS_PROXY "
+    gcloud beta compute --project ${LB_PROJECT} target-https-proxies update $HTTPS_PROXY --ssl-certificates $OLD_CERT_NAME --quiet
+    echo "Update of curent SSL certificate${CERT_NAME}:"
+    echo "remove old version of ssl-certificate: ${CERT_NAME} from ${LB_PROJECT}"
+    gcloud beta compute --project ${LB_PROJECT} ssl-certificates delete ${CERT_NAME} --quiet
+    echo "create the new version of ssl-certificate: ${CERT_NAME} on ${LB_PROJECT}"
+    gcloud beta compute --project ${LB_PROJECT} ssl-certificates create ${CERT_NAME} \
+      --certificate=${FULLCHAINFILE} \
+      --private-key=${KEYFILE}
+    echo "set updated SSL cert as main on LB:${HTTPS_PROXY}"
+    gcloud beta compute --project ${LB_PROJECT} target-https-proxies update $HTTPS_PROXY --ssl-certificates $CERT_NAME
+    echo "update old cert: ${OLD_CERT}"
+    gcloud beta compute --project ${LB_PROJECT} ssl-certificates delete ${OLD_CERT_NAME} --quiet
+    gcloud beta compute --project ${LB_PROJECT} ssl-certificates create ${OLD_CERT_NAME} \
+      --certificate=${FULLCHAINFILE} \
+      --private-key=${KEYFILE}
 }
 
 function unchanged_cert {

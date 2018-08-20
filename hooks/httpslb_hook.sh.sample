@@ -1,14 +1,13 @@
-#!/usr/bin/env bash
-DNS_PROJECT="project_id"
-LB_PROJECT="project_id"
+DNS_PROJECT="quixotic-dynamo-213210"
+LB_PROJECT="quixotic-dynamo-213210"
 # zone name on cloud DNS must be converted from domain dot(.) to dash(-)
 # etc if domain is "www.example.com"  when zone name must be "www-example-com"
-TARGET_DOMAINS=("www.example.com" "example.com")
-M_DOMAIN="domain_CNAME_acme"
+TARGET_DOMAINS=("dmitriy1207test.pp.ua")
+M_DOMAIN="dmitriy1207.pp.ua"
 
 # You can choice "NAME" form "gcloud beta compute target-https-proxies list"
-HTTPS_PROXY="target-https-proxy-name"
-CERT_NAME="auto-`date "+%Y%m%d%H%M"`"
+HTTPS_PROXY="lb-test-target-proxy"
+# CERT_NAME="auto-`date "+%Y%m%d%H%M"`"
 
 SLEEP_SECONDS=60
-. ./hooks/httpslb.base
+. /etc/gcp-ssl-auto-renewer/hooks/httpslb.base
